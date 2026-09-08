@@ -1,0 +1,137 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staywise
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: staywise-config
+  namespace: staywise
+data:
+  VITE_API_PROXY_TARGET: http://backend:8000
+  DJANGO_DEBUG: "true"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: staywise-secret
+  namespace: staywise
+type: Opaque
+stringData:
+  DJANGO_SECRET_KEY: local-kubernetes-development-key
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: staywise-django-data
+  namespace: staywise
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: staywise
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: staywise-booking:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - python manage.py migrate && python manage.py runserver 0.0.0.0:8000
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: staywise-secret
+                  key: DJANGO_SECRET_KEY
+            - name: DEBUG
+              valueFrom:
+                configMapKeyRef:
+                  name: staywise-config
+                  key: DJANGO_DEBUG
+            - name: SQLITE_PATH
+              value: /app/data/db.sqlite3
+          volumeMounts:
+            - name: django-data
+              mountPath: /app/data
+      volumes:
+        - name: django-data
+          persistentVolumeClaim:
+            claimName: staywise-django-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: staywise
+spec:
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: staywise
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: staywise-booking:latest
+          imagePullPolicy: IfNotPresent
+          command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+          ports:
+            - name: http
+              containerPort: 5173
+          env:
+            - name: VITE_API_PROXY_TARGET
+              valueFrom:
+                configMapKeyRef:
+                  name: staywise-config
+                  key: VITE_API_PROXY_TARGET
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: staywise
+spec:
+  type: LoadBalancer
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 5173
+      targetPort: http
