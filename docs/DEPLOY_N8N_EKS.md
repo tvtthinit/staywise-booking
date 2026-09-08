@@ -102,41 +102,41 @@ kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-cont
 
 ## 5. Create the namespace and application secret
 
-Create the namespace:
+The repository includes this Kubernetes structure:
 
-```powershell
-kubectl create namespace $env:N8N_NAMESPACE
+```text
+k8s/n8n/
+  namespace.yaml
+  secrets.yaml.example
+  deployment.yaml
+  service.yaml
+  ingress.yaml.example
 ```
 
-Generate a strong encryption key and database password. Store them in AWS Secrets Manager in production. For a first test deployment, create a Kubernetes Secret directly:
+Apply the namespace first:
 
 ```powershell
-$n8nKey = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))
-
-kubectl -n $env:N8N_NAMESPACE create secret generic n8n-secrets `
-  --from-literal=DB_POSTGRESDB_USER='<RDS_USERNAME>' `
-  --from-literal=DB_POSTGRESDB_PASSWORD='<RDS_PASSWORD>' `
-  --from-literal=DB_POSTGRESDB_DATABASE='n8n' `
-  --from-literal=DB_POSTGRESDB_HOST='<RDS_ENDPOINT>' `
-  --from-literal=DB_POSTGRESDB_PORT='5432' `
-  --from-literal=QUEUE_BULL_REDIS_HOST='<REDIS_ENDPOINT>' `
-  --from-literal=QUEUE_BULL_REDIS_PORT='6379' `
-  --from-literal=N8N_ENCRYPTION_KEY="$n8nKey"
+kubectl apply -f k8s/n8n/namespace.yaml
 ```
 
-Do not commit this command with real passwords or keys. For a production cluster, sync the values from AWS Secrets Manager using External Secrets Operator or another approved secrets integration.
+Generate a strong encryption key and database password. Store them in AWS Secrets Manager in production. For a first test deployment, copy the example secret file, replace every placeholder, and apply it:
+
+```powershell
+Copy-Item k8s/n8n/secrets.yaml.example k8s/n8n/secrets.yaml
+notepad k8s/n8n/secrets.yaml
+kubectl apply -f k8s/n8n/secrets.yaml
+```
+
+Do not commit `k8s/n8n/secrets.yaml` with real passwords or keys. For production, sync values from AWS Secrets Manager using External Secrets Operator or another approved secrets integration.
 
 ## 6. Deploy n8n in queue mode
 
-Create `k8s/n8n.yaml` outside this guide with the following resources:
+The deployment and service are split into files:
 
-- `ServiceAccount`
-- `Deployment` for the n8n main process
-- `Deployment` for n8n workers
-- `Service` for the main process
-- `Ingress` using the AWS Load Balancer Controller
-- `PodDisruptionBudget`
-- `NetworkPolicy`, if your CNI and security model support it
+- `k8s/n8n/deployment.yaml`: runs n8n and reads credentials from `n8n-secrets`.
+- `k8s/n8n/service.yaml`: exposes n8n inside the cluster on port `5678`.
+
+Before applying `deployment.yaml`, replace `<PINNED_VERSION>` and update `n8n.example.com` to your real hostname.
 
 The main deployment needs these environment variables:
 
@@ -245,14 +245,16 @@ spec:
                   number: 5678
 ```
 
-Point the Route 53 record for `n8n.example.com` to the ALB hostname created by the controller.
+Copy `k8s/n8n/ingress.yaml.example` to `k8s/n8n/ingress.yaml`, replace the ACM certificate ARN and hostname, then apply it after the Service. Point the Route 53 record for the hostname to the ALB created by the controller.
 
 ## 8. Apply and verify
 
 ```powershell
-kubectl apply -f k8s/n8n.yaml
+kubectl apply -f k8s/n8n/secrets.yaml
+kubectl apply -f k8s/n8n/deployment.yaml
+kubectl apply -f k8s/n8n/service.yaml
+kubectl apply -f k8s/n8n/ingress.yaml
 kubectl rollout status deployment/n8n -n n8n
-kubectl rollout status deployment/n8n-worker -n n8n
 kubectl get pods -n n8n
 kubectl get ingress -n n8n
 ```
