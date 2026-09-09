@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Coffee, MapPin, Search, ShieldCheck, Star, Users, Waves, Wifi } from 'lucide-react'
-import { bookingAction, createBooking, getBookingHistory, getReviews, listRooms, payBooking, saveProfile, searchHotels, submitReview, validatePromotion } from './api'
+import { bookingAction, createBooking, getBookingHistory, getReviews, listRooms, saveProfile, searchHotels, submitReview, validatePromotion } from './api'
 import { sampleHotels, type Booking, type GuestProfile, type Hotel, type Review, type Room, type SearchState } from './types'
 
 const initialSearch: SearchState = { destination: '', checkIn: '2026-10-12', checkOut: '2026-10-16', guests: 2 }
@@ -121,7 +121,6 @@ function App() {
   async function handleBooking(event: React.FormEvent) {
     event.preventDefault()
     const result = await createBooking({ hotelId: selectedHotel!.id, roomId: selectedRoom?.id, guestName, email, promotionCode, search })
-    if (result.id) await payBooking(result.id, selectedRoom?.price || selectedHotel!.price)
     setBookingCode(result.confirmation_code)
   }
 

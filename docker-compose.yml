@@ -4,10 +4,19 @@ services:
       context: .
       dockerfile: Dockerfile
     command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      BOOKING_SERVICE_URL: http://booking:9101
+      CALCULATING_ROOM_SERVICE_URL: http://calculating-room:9102
+      PAYMENT_SERVICE_URL: http://payment:9103
     ports:
       - '8000:8000'
     volumes:
       - .:/app
+    depends_on:
+      - booking
+      - calculating-room
+      - payment
 
   frontend:
     build:
@@ -38,6 +47,53 @@ services:
     image: redis:7-alpine
     ports:
       - '6379:6379'
+
+  calculating-room:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+      args:
+        SERVICE: calculatingroom
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      PORT: 9002
+      HTTP_PORT: 9102
+    ports:
+      - '9002:9002'
+      - '9102:9102'
+
+  payment:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+      args:
+        SERVICE: payment
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      PORT: 9003
+      HTTP_PORT: 9103
+    ports:
+      - '9003:9003'
+      - '9103:9103'
+
+  booking:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+      args:
+        SERVICE: booking
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      PORT: 9001
+      HTTP_PORT: 9101
+      CALCULATING_ROOM_ADDR: calculating-room:9002
+      PAYMENT_ADDR: payment:9003
+    depends_on:
+      - calculating-room
+      - payment
+    ports:
+      - '9001:9001'
+      - '9101:9101'
 
 volumes:
   postgres_data:

@@ -4,6 +4,7 @@ from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .microservices import MicroserviceUnavailable, calculate_room, create_booking, process_payment
 from .models import Booking, GuestProfile, Hotel, Payment, Promotion, Refund, Review, Room
 from .serializers import BookingSerializer, GuestProfileSerializer, HotelSerializer, PaymentSerializer, PromotionSerializer, RefundSerializer, ReviewSerializer, RoomSerializer
 
@@ -54,8 +55,42 @@ class BookingCreateView(APIView):
     def post(self, request):
         serializer = BookingSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        validated = serializer.validated_data
+        try:
+            service_booking = create_booking(
+                validated.get('room').id if validated.get('room') else 0,
+                validated['check_in'],
+                validated['check_out'],
+                validated.get('guests', 1),
+                validated['guest_name'],
+                validated['email'],
+            )
+        except MicroserviceUnavailable as error:
+            return Response({'detail': str(error)}, status=503)
         booking = serializer.save()
+        booking.confirmation_code = service_booking['confirmation_code']
+        booking.save(update_fields=['confirmation_code'])
+        Payment.objects.update_or_create(
+            booking=booking,
+            defaults={'amount': service_booking['amount'], 'method': 'demo_card', 'status': service_booking['status']},
+        )
         return Response(BookingSerializer(booking).data, status=201)
+
+
+class RoomCalculationView(APIView):
+    def post(self, request):
+        try:
+            result = calculate_room(
+                request.data.get('room_id', 0),
+                request.data['check_in'],
+                request.data['check_out'],
+                request.data.get('guests', 1),
+                request.data.get('currency', 'USD'),
+            )
+        except (KeyError, MicroserviceUnavailable) as error:
+            status_code = 400 if isinstance(error, KeyError) else 503
+            return Response({'detail': str(error)}, status=status_code)
+        return Response(result)
 
 
 class BookingListView(generics.ListAPIView):
@@ -84,7 +119,12 @@ class PaymentCreateView(APIView):
     def post(self, request):
         serializer = PaymentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        payment, _ = Payment.objects.update_or_create(booking=serializer.validated_data['booking'], defaults={'amount': serializer.validated_data['amount'], 'method': serializer.validated_data.get('method', 'demo_card'), 'status': 'paid'})
+        booking = serializer.validated_data['booking']
+        try:
+            service_payment = process_payment(booking.id, serializer.validated_data['amount'], method=serializer.validated_data.get('method', 'demo_card'))
+        except MicroserviceUnavailable as error:
+            return Response({'detail': str(error)}, status=503)
+        payment, _ = Payment.objects.update_or_create(booking=booking, defaults={'amount': serializer.validated_data['amount'], 'method': serializer.validated_data.get('method', 'demo_card'), 'status': service_payment['status']})
         return Response(PaymentSerializer(payment).data, status=201)
 
 

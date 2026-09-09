@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package staywise;
+
+option go_package = "staywise/services/internal/rpc";
+
+service CalculatingRoom {
+  rpc CalculateRoom (CalculateRoomRequest) returns (CalculateRoomResponse);
+}
+
+service Booking {
+  rpc CreateBooking (CreateBookingRequest) returns (CreateBookingResponse);
+}
+
+service Payment {
+  rpc ProcessPayment (ProcessPaymentRequest) returns (ProcessPaymentResponse);
+}
+
+message CalculateRoomRequest { int32 room_id = 1; string check_in = 2; string check_out = 3; int32 guests = 4; string currency = 5; }
+message CalculateRoomResponse { int32 room_id = 1; int32 nights = 2; int64 nightly_amount = 3; int64 total_amount = 4; string currency = 5; }
+message CreateBookingRequest { int32 room_id = 1; string check_in = 2; string check_out = 3; int32 guests = 4; string guest_name = 5; string email = 6; string currency = 7; }
+message CreateBookingResponse { string booking_id = 1; string confirmation_code = 2; int64 amount = 3; string currency = 4; string payment_id = 5; string status = 6; }
+message ProcessPaymentRequest { string booking_id = 1; int64 amount = 2; string currency = 3; string method = 4; }
+message ProcessPaymentResponse { string payment_id = 1; string status = 2; }

@@ -1,11 +1,12 @@
 from django.urls import path
-from .views import BookingActionView, BookingCreateView, BookingListView, DestinationListView, GuestProfileView, HotelDetailView, HotelListView, PaymentCreateView, PromotionView, ReviewListCreateView, RoomListView
+from .views import BookingActionView, BookingCreateView, BookingListView, DestinationListView, HotelDetailView, HotelListView, PaymentCreateView, PromotionView, ReviewListCreateView, RoomCalculationView, RoomListView, GuestProfileView
 
 urlpatterns = [
     path('hotels/', HotelListView.as_view(), name='hotel-list'),
     path('hotels/<int:pk>/', HotelDetailView.as_view(), name='hotel-detail'),
     path('destinations/', DestinationListView.as_view(), name='destination-list'),
     path('rooms/', RoomListView.as_view(), name='room-list'),
+    path('room-calculations/', RoomCalculationView.as_view(), name='room-calculation'),
     path('bookings/', BookingCreateView.as_view(), name='booking-create'),
     path('bookings/history/', BookingListView.as_view(), name='booking-history'),
     path('bookings/<str:confirmation_code>/<str:action>/', BookingActionView.as_view(), name='booking-action'),
