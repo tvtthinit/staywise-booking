@@ -1,8 +1,12 @@
+import os
+
 from django.contrib import admin
 from django.db.models import CharField, F, Q
 from django.db.models.functions import Cast
 
 from .models import Booking, GuestProfile, Hotel, HotelImage, Payment, Promotion, Refund, Review, Room
+
+admin.site.site_url = os.getenv('FRONTEND_URL', 'http://127.0.0.1:5173/')
 
 
 def admin_with_all_fields(model):
