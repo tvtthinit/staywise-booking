@@ -63,6 +63,8 @@ The repository also includes three authenticated Go services under `services/`. 
 
 REST adapters used by Django listen on ports `9101`, `9102`, and `9103` with `/v1/bookings`, `/v1/room-calculations`, and `/v1/payments`.
 
+The Go services share the PostgreSQL database configured by Compose through `DATABASE_URL`. They create these tables on startup: `room_prices`, `service_bookings`, and `service_payments`. Set `DATABASE_URL` when running a service outside Compose.
+
 All RPCs require a JWT bearer token signed with `JWT_SECRET`. The booking service creates a short-lived service token for its calls to the other two services. The shared contract is in `services/proto/staywise.proto`; the current Go implementation uses the registered gRPC JSON codec so it can build without `protoc`.
 
 Run the services with Docker after starting Docker Desktop:

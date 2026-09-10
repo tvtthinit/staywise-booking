@@ -56,11 +56,14 @@ services:
         SERVICE: calculatingroom
     environment:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      DATABASE_URL: postgres://staywise:staywise@db:5432/staywise?sslmode=disable
       PORT: 9002
       HTTP_PORT: 9102
     ports:
       - '9002:9002'
       - '9102:9102'
+    depends_on:
+      - db
 
   payment:
     build:
@@ -70,11 +73,14 @@ services:
         SERVICE: payment
     environment:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      DATABASE_URL: postgres://staywise:staywise@db:5432/staywise?sslmode=disable
       PORT: 9003
       HTTP_PORT: 9103
     ports:
       - '9003:9003'
       - '9103:9103'
+    depends_on:
+      - db
 
   booking:
     build:
@@ -84,6 +90,7 @@ services:
         SERVICE: booking
     environment:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      DATABASE_URL: postgres://staywise:staywise@db:5432/staywise?sslmode=disable
       PORT: 9001
       HTTP_PORT: 9101
       CALCULATING_ROOM_ADDR: calculating-room:9002
@@ -91,6 +98,7 @@ services:
     depends_on:
       - calculating-room
       - payment
+      - db
     ports:
       - '9001:9001'
       - '9101:9101'

@@ -10,21 +10,21 @@ import (
 
 	"staywise/services/internal/config"
 	"staywise/services/internal/rpc"
+	"staywise/services/internal/store"
 	"google.golang.org/grpc"
 )
 
-type server struct{}
+type server struct{ store *store.Store }
 
-func (server) CalculateRoom(_ context.Context, request *rpc.CalculateRoomRequest) (*rpc.CalculateRoomResponse, error) {
+func (server server) CalculateRoom(ctx context.Context, request *rpc.CalculateRoomRequest) (*rpc.CalculateRoomResponse, error) {
 	checkIn, err := time.Parse("2006-01-02", request.CheckIn)
 	if err != nil { return nil, err }
 	checkOut, err := time.Parse("2006-01-02", request.CheckOut)
 	if err != nil { return nil, err }
 	nights := int32(checkOut.Sub(checkIn).Hours() / 24)
 	if nights < 1 { return nil, grpc.Errorf(3, "check_out must be after check_in") }
-	prices := map[int32]int64{1: 180, 2: 240, 3: 320}
-	nightlyAmount := prices[request.RoomID]
-	if nightlyAmount == 0 { nightlyAmount = 15000 }
+	nightlyAmount, err := server.store.NightlyAmount(ctx, request.RoomID)
+	if err != nil { return nil, err }
 	currency := request.Currency
 	if currency == "" { currency = "USD" }
 	return &rpc.CalculateRoomResponse{RoomID: request.RoomID, Nights: nights, NightlyAmount: nightlyAmount, TotalAmount: nightlyAmount * int64(nights), Currency: currency}, nil
@@ -44,9 +44,13 @@ func restHandler(service server) http.Handler {
 
 func main() {
 	secret := config.Env("JWT_SECRET", "change-me-in-production")
+	database, err := store.Open(config.Env("DATABASE_URL", "postgres://staywise:staywise@localhost:5432/staywise?sslmode=disable"))
+	if err != nil { log.Fatal(err) }
+	defer database.Close()
+	if err := database.EnsureSchema(context.Background()); err != nil { log.Fatal(err) }
 	listener, err := net.Listen("tcp", ":"+config.Env("PORT", "9002"))
 	if err != nil { log.Fatal(err) }
-	service := server{}
+	service := server{store: database}
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.UnaryJWTInterceptor(secret)))
 	rpc.RegisterCalculateRoomServer(grpcServer, service)
 	go func() {

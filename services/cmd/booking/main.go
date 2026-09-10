@@ -11,6 +11,7 @@ import (
 
 	"staywise/services/internal/config"
 	"staywise/services/internal/rpc"
+	"staywise/services/internal/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -19,6 +20,7 @@ type server struct {
 	calculatingRoom rpc.CalculatingRoomClient
 	payment         rpc.PaymentClient
 	serviceToken    string
+	store           *store.Store
 }
 
 func (server *server) CreateBooking(ctx context.Context, request *rpc.CreateBookingRequest) (*rpc.CreateBookingResponse, error) {
@@ -30,7 +32,9 @@ func (server *server) CreateBooking(ctx context.Context, request *rpc.CreateBook
 	bookingID := fmt.Sprintf("booking_%d", time.Now().UnixNano())
 	payment, err := server.payment.ProcessPayment(serviceContext, &rpc.ProcessPaymentRequest{BookingID: bookingID, Amount: quote.TotalAmount, Currency: quote.Currency, Method: "demo_card"})
 	if err != nil { return nil, err }
-	return &rpc.CreateBookingResponse{BookingID: bookingID, ConfirmationCode: "SW-" + bookingID[len(bookingID)-8:], Amount: quote.TotalAmount, Currency: quote.Currency, PaymentID: payment.PaymentID, Status: payment.Status}, nil
+	confirmationCode := "SW-" + bookingID[len(bookingID)-8:]
+	if err := server.store.SaveBooking(ctx, store.Booking{ID: bookingID, ConfirmationCode: confirmationCode, RoomID: request.RoomID, CheckIn: request.CheckIn, CheckOut: request.CheckOut, Guests: request.Guests, GuestName: request.GuestName, Email: request.Email, Amount: quote.TotalAmount, Currency: quote.Currency, PaymentID: payment.PaymentID, Status: payment.Status}); err != nil { return nil, err }
+	return &rpc.CreateBookingResponse{BookingID: bookingID, ConfirmationCode: confirmationCode, Amount: quote.TotalAmount, Currency: quote.Currency, PaymentID: payment.PaymentID, Status: payment.Status}, nil
 }
 
 func restHandler(service *server) http.Handler {
@@ -47,6 +51,10 @@ func restHandler(service *server) http.Handler {
 
 func main() {
 	secret := config.Env("JWT_SECRET", "change-me-in-production")
+	database, err := store.Open(config.Env("DATABASE_URL", "postgres://staywise:staywise@localhost:5432/staywise?sslmode=disable"))
+	if err != nil { log.Fatal(err) }
+	defer database.Close()
+	if err := database.EnsureSchema(context.Background()); err != nil { log.Fatal(err) }
 	token, err := rpc.JWT(secret, "booking-service")
 	if err != nil { log.Fatal(err) }
 	calculatingConnection, err := grpc.Dial(config.Env("CALCULATING_ROOM_ADDR", "calculating-room:9002"), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -58,7 +66,7 @@ func main() {
 	listener, err := net.Listen("tcp", ":"+config.Env("PORT", "9001"))
 	if err != nil { log.Fatal(err) }
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.UnaryJWTInterceptor(secret)))
-	service := &server{calculatingRoom: rpc.NewCalculatingRoomClient(calculatingConnection), payment: rpc.NewPaymentClient(paymentConnection), serviceToken: token}
+	service := &server{calculatingRoom: rpc.NewCalculatingRoomClient(calculatingConnection), payment: rpc.NewPaymentClient(paymentConnection), serviceToken: token, store: database}
 	rpc.RegisterBookingServer(grpcServer, service)
 	go func() {
 		if err := http.ListenAndServe(":"+config.Env("HTTP_PORT", "9101"), rpc.HTTPJWT(secret, restHandler(service))); err != nil { log.Fatal(err) }

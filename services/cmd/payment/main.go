@@ -11,14 +11,16 @@ import (
 
 	"staywise/services/internal/config"
 	"staywise/services/internal/rpc"
+	"staywise/services/internal/store"
 	"google.golang.org/grpc"
 )
 
-type server struct{ sequence uint64 }
+type server struct{ sequence uint64; store *store.Store }
 
-func (server *server) ProcessPayment(_ context.Context, request *rpc.ProcessPaymentRequest) (*rpc.ProcessPaymentResponse, error) {
+func (server *server) ProcessPayment(ctx context.Context, request *rpc.ProcessPaymentRequest) (*rpc.ProcessPaymentResponse, error) {
 	if request.BookingID == "" || request.Amount <= 0 { return nil, grpc.Errorf(3, "booking_id and a positive amount are required") }
 	paymentID := fmt.Sprintf("pay_%06d", atomic.AddUint64(&server.sequence, 1))
+	if err := server.store.SavePayment(ctx, store.Payment{ID: paymentID, BookingID: request.BookingID, Amount: request.Amount, Currency: request.Currency, Method: request.Method, Status: "paid"}); err != nil { return nil, err }
 	return &rpc.ProcessPaymentResponse{PaymentID: paymentID, Status: "paid"}, nil
 }
 
@@ -36,9 +38,13 @@ func restHandler(service *server) http.Handler {
 
 func main() {
 	secret := config.Env("JWT_SECRET", "change-me-in-production")
+	database, err := store.Open(config.Env("DATABASE_URL", "postgres://staywise:staywise@localhost:5432/staywise?sslmode=disable"))
+	if err != nil { log.Fatal(err) }
+	defer database.Close()
+	if err := database.EnsureSchema(context.Background()); err != nil { log.Fatal(err) }
 	listener, err := net.Listen("tcp", ":"+config.Env("PORT", "9003"))
 	if err != nil { log.Fatal(err) }
-	service := &server{}
+	service := &server{store: database}
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.UnaryJWTInterceptor(secret)))
 	rpc.RegisterPaymentServer(grpcServer, service)
 	go func() {
